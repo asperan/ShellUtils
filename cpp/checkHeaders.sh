@@ -23,28 +23,34 @@ PATTERN=".*\.h((xx)|(h)|(pp)|())$";
 ### Date settings
 DATE_FORMAT="+%Y%m%d%H%M%S";
 
-# Expands given path if it starts with "./" to be an absolute path
+# Expands the given path if it starts with "./" to be an absolute path
 function expand_curr_dir {
-  filepath=$1;
-  # Counts the number of times the path has '../'
-  numBackDir=`echo ${filepath} | sed 's/\.\.\//&\n/g' | grep '\.\.\/' | wc -l`;
-  iter=0;
-  cdPath="";
-  while [[ ${iter} -lt ${numBackDir} ]]; do
-    cdPath=${cdPath}"../";
-    let iter++;
-  done
-  # Adds './' to the beginning of the path to say it is a relative path
-  if [[ "${filepath}" = ../* ]]; then
-    filepath="./"${filepath};
+  if [[ ! $# -eq 1 ]]; then
+    exit 1;
+  else
+    filepath=$1;
+    # Counts the number of times the path has '../'
+    numBackDir=`echo ${filepath} | sed 's/\.\.\//&\n/g' | grep '\.\.\/' | wc -l`;
+    iter=0;
+    cdPath="";
+    # Counts the parent dirs
+    while [[ ${iter} -lt ${numBackDir} ]]; do
+      cdPath=${cdPath}"../";
+      let iter++;
+    done
+    # Adds './' to the beginning of the path to say it is a relative path
+    if [[ "${filepath}" = ../* ]]; then
+      filepath="./"${filepath};
+    fi
+    # Removes every '../' substring
+    filepath=`echo ${filepath} | sed 's/\.\.\///g'`;
+    # Follows every '../' counted before.
+    filepath=`cd ${cdPath}; pwd`$(echo ${filepath} | tail -c +2);
+    echo ${filepath};
   fi
-  # Removes every '../' substring
-  filepath=`echo ${filepath} | sed 's/\.\.\///g'`;
-  # Follows every '../' counted before.
-  filepath=`cd ${cdPath}; pwd`$(echo ${filepath} | tail -c +2);
-  echo ${filepath};
 }
 
+# Checks the given header syntax
 function checkHeader {
   if [[ ! $# -eq 1 ]]; then
     exit 1;
@@ -60,42 +66,41 @@ function checkHeader {
   fi
 }
 
+# Checks whether the support file has been initialized, and if not, it is created
+# No parameters required
+function checkSupportFile {
+  if [[ ! -d "${HOME}/${SUPP_PATH}" ]] ; then
+    # The config folder does not exists, it needs to be created.
+    mkdir ~/${SUPP_PATH}
+  fi
+  if [[ ! -f "${HOME}/${SUPP_PATH}/${SUPP_FILE_NAME}" ]]; then
+    # The support file is not present, it needs to be created.
+    printf "# This file is used by the checkHeaders script.\n# In this file are stored the headers checked and the date at which the are checked.\n# Delete this file ONLY if you want to reset the script memory.\n# Format: <filename>_<last check time (yyyymmddHHMMSS)>\n" > ~/${SUPP_PATH}/${SUPP_FILE_NAME}
+  fi
+}
+
+checkSupportFile;
+
+# Find every headers below the specified dir
 headerList=`find "${FIND_PATH}" -regextype 'egrep' -iregex ${PATTERN}`;
-
-if [[ ! -d "${HOME}/${SUPP_PATH}" ]] ; then
-  # The config folder does not exists, it needs to be created.
-  mkdir ~/${SUPP_PATH}
-fi
-if [[ ! -f "${HOME}/${SUPP_PATH}/${SUPP_FILE_NAME}" ]]; then
-  # The support file is not present, it needs to be created.
-  printf "# This file is used by the checkHeaders script.\n# In this file are stored the headers checked and the date at which the are checked.\n# Delete this file ONLY if you want to reset the script memory.\n# Format: <filename>_<last check time (yyyymmddHHMMSS)>\n" > ~/${SUPP_PATH}/${SUPP_FILE_NAME}
-fi
-
 
 #The next part is executed only if find does not have an error.
 if [[ $? -eq 0 ]]; then
   echo "Headers found:";
   echo "${headerList}";
   echo "";
-
-# Controllare se la data di ultima modifica del file di header è maggiore della data di ultima compilazione nel file di supporto
-# con date -r $filename "+%y%m%d%H%M%S". Confrontare con la data presente nel file di supporto (se esiste).
   for header in ${headerList}; do
     full_filepath=`expand_curr_dir ${header}`
-    #echo "${full_filepath}"
     fileLine=`fgrep "${full_filepath}" "${supportFile}"`
-    #echo "${fileLine}"
     if [[ -z "${fileLine}" ]] ; then
-      #echo "Header not present in support file"
       compilationDate=`date ${DATE_FORMAT}`;
+      # If there is no file entry in the support file, a new one is appended
       echo ${full_filepath}_${compilationDate} >> ~/${SUPP_PATH}/${SUPP_FILE_NAME}
       checkHeader ${full_filepath};
     else
-      #echo "Header already in support file"
-      #echo "${fileLine}";
       lastCompDate=$(echo ${fileLine} | sed 's,'"${full_filepath}"',,' | tail -c +2);
-      #echo ${lastCompDate};
       lastModDate=`date -r ${full_filepath} ${DATE_FORMAT}`;
+      # The header is checked again only if it has been modified after the last check
       if [[ ${lastCompDate} -lt ${lastModDate} ]]; then
         checkHeader ${full_filepath};
       fi
