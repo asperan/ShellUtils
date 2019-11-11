@@ -23,14 +23,51 @@ PATTERN=".*\.h((xx)|(h)|(pp)|())$";
 ### Date settings
 DATE_FORMAT="+%Y%m%d%H%M%S";
 
+### Option settings
+# Available options:
+# -h    Show Help panel
+# -q    Suppress output
+# 
+
+# Sets the option variables according to options passed or default behavior
+function parse_options {
+  while getopts ':hq' currOption; do
+  #echo ${currOption}
+    case ${currOption} in
+      q) echo "Quiet"
+      ;;
+      h) echo "Help"
+      ;;
+      \?) echo "Unknown"
+      ;;
+    esac
+  done
+  #optionList=`getopt -o 'h'`;
+  #echo ${optionList};
+}
+
+parse_options;
+
 # Expands the given path if it starts with "./" to be an absolute path
 function expand_curr_dir {
   if [[ ! $# -eq 1 ]]; then
     exit 1;
   else
     filepath=$1;
+    # Removes './' from the beginning of the path
+    if [[ "${filepath}" = ./* ]]; then
+      filepath=`echo ${filepath} | tail -c +3`;
+    fi
+    
     # Counts the number of times the path has '../'
     numBackDir=`echo ${filepath} | sed 's/\.\.\//&\n/g' | grep '\.\.\/' | wc -l`;
+
+    # The filepath start with a folder and then it goes back,
+    if [[ ${numBackDir} -gt 0 && ! ${filepath} = ../* ]]; then
+      printf "ERROR: filepath starts with a folder and then goes back with '../'. Please rewrite the path without this construct.\n";
+      exit 1;
+    fi
+    
     iter=0;
     cdPath="";
     # Counts the parent dirs
@@ -38,14 +75,19 @@ function expand_curr_dir {
       cdPath=${cdPath}"../";
       let iter++;
     done
-    # Adds './' to the beginning of the path to say it is a relative path
-    if [[ "${filepath}" = ../* ]]; then
-      filepath="./"${filepath};
-    fi
+
     # Removes every '../' substring
     filepath=`echo ${filepath} | sed 's/\.\.\///g'`;
-    # Follows every '../' counted before.
-    filepath=`cd ${cdPath}; pwd`$(echo ${filepath} | tail -c +2);
+
+    if [[ ${iter} -eq 0 && ! ${filepath} = ~/* ]]; then
+      # Follows every '../' counted before.
+      filepath=`pwd`"/${filepath}";
+    elif [[ ! ${iter} -eq 0 && ${filepath} = ~/* ]]; then 
+      printf "ERROR: filepath starts from home directory back has '../'. Please rewrite the path without this construct.\n";
+      exit 1;
+    else
+      filepath=`cd ${cdPath}; pwd`"/${filepath}";
+    fi
     echo ${filepath};
   fi
 }
@@ -103,6 +145,8 @@ if [[ $? -eq 0 ]]; then
       # The header is checked again only if it has been modified after the last check
       if [[ ${lastCompDate} -lt ${lastModDate} ]]; then
         checkHeader ${full_filepath};
+      else
+        printf "Header ${full_filepath} has already been checked after the last edit.\n"
       fi
     fi
   done
