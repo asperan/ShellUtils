@@ -22,9 +22,6 @@ supportFile="${HOME}/${SUPP_PATH}/${SUPP_FILE_NAME}"
 # Default compiler is g++, but if it not installed, it can be selected using option "-c gcc"
 COMPILER="g++";
 
-### Options
-QUIET=false;
-
 ### ERROR CODES
 ALL_GOOD=0;
 NO_FILE_FOUND=1;
@@ -66,13 +63,13 @@ function print_help {
     4              The number of arguments passed is not congruent to the option specified and the script specifications.
     5              One of the specified option is not known or implemented.
     6              The argument to one of the option is not valid.
-"""
+""" >&2;
 }
 
 # Expands the given path if it starts with "./" to be an absolute path
 function expand_curr_dir {
   if [[ ! $# -eq 1 ]]; then
-    printf "ERROR: expand_curr_dir does not have 1 argument\n";
+    printf "ERROR: expand_curr_dir does not have 1 argument\n" >&2;
     exit ${WRONG_ARG_NUM};
   else
     filepath=$1;
@@ -86,7 +83,7 @@ function expand_curr_dir {
 
     # The filepath start with a folder and then it goes back,
     if [[ ${numBackDir} -gt 0 && ! ${filepath} = ../* ]]; then
-      printf "ERROR: filepath starts with a folder and then goes back with '../'. Please rewrite the path without this construct.\n";
+      printf "ERROR: filepath starts with a folder and then goes back with '../'. Please rewrite the path without this construct.\n" >&2; 
       exit ${BAD_DIRECTORY};
     fi
     
@@ -119,17 +116,17 @@ function expand_curr_dir {
 # Checks the given header syntax
 function checkHeader {
   if [[ ! "$#" -eq 1 ]]; then
-    echo "ERROR: No file specified";
+    printf "ERROR: No file specified.\n" >&2;
     exit ${WRONG_ARG_NUM};
   else
     current_filepath="$1";
-    echo "Checking ${current_filepath} ...";
+    printf "Checking ${current_filepath} ...\n";
     #Errors are printed anyway if g++ finds one, so this script just confirm when the header is OK.
     ${COMPILER} -fsyntax-only ${full_filepath};    
     if [[ "$?" -eq "0" ]]; then
-      echo -e "[${GREEN}OK${NO_CLR}] File \"${current_filepath}\" has no syntax errors.";
+      printf "[${GREEN}OK${NO_CLR}] File \"${current_filepath}\" has no syntax errors.\n\n";
     fi
-    echo ""
+    #echo ""
   fi
 }
 
@@ -153,18 +150,18 @@ while getopts 'hqc:f:' currOption; do
     c)  if [[ "${OPTARG}" = gcc || "${OPTARG}" = g++ ]]; then
           COMPILER="$OPTARG";
         else 
-          printf "ERROR: Unknown or unsupported compiler.\n";
+          printf "ERROR: Unknown or unsupported compiler.\n" >&2;
           print_help;
           exit ${ARG_NOT_VALID};
         fi
     ;;
     f)  supportFile="${OPTARG}";
     ;;
-    q)  QUIET=true; echo "Quiet";
+    q)  exec 1>/dev/null;
     ;;
     h)  print_help; exit ${ALL_GOOD};
     ;;
-    ?)  echo "${currOption}: Unknown option."; print_help; exit ${UNKNOWN_OPTION};
+    ?)  printf "${currOption}: Unknown option.\n" >&2; print_help; exit ${UNKNOWN_OPTION};
     ;;
   esac
 done
@@ -174,7 +171,7 @@ done
 if [[ ${OPTIND} -le $# ]]; then
   FIND_PATH=${!OPTIND};
 else
-  printf "ERROR: Argument list is malformed.\n";
+  printf "ERROR: Argument list is malformed.\n" >&2;
   exit ${WRONG_ARG_NUM};
 fi
 
@@ -192,9 +189,9 @@ done < <(find "${FIND_PATH}" -regextype 'egrep' -iregex ${PATTERN} -print0);
 
 #The next part is executed only if find does not have an error.
 if [[ $? -eq 0 ]]; then
-  echo "Headers found:";
+  printf "Headers found:\n";
   printf '%s\n' "${headerList[@]}";
-  echo "";
+  printf "\n";
   for header in "${headerList[@]}" ; do
     full_filepath=`expand_curr_dir "${header}"`;
     #echo ${full_filepath}
@@ -217,6 +214,6 @@ if [[ $? -eq 0 ]]; then
     fi
   done
 else
-  printf "ERROR:  No header file found in this directory and its children.\n";
+  printf "ERROR:  No header file found in this directory and its children.\n" >&2;
   exit ${NO_FILE_FOUND};
 fi
